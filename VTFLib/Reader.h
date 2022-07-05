@@ -29,7 +29,6 @@ namespace VTFLib
 				virtual vlVoid Close() = 0;
 
 				virtual vlUInt GetStreamSize() const = 0;
-				virtual vlUInt GetStreamPointer() const = 0;
 
 				virtual vlUInt Seek(vlLong lOffset, vlUInt uiMode) = 0;
 

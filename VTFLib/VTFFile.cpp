@@ -22,6 +22,10 @@
 
 using namespace VTFLib;
 
+// Conflicts with STL
+#undef min
+#undef max
+
 // Class construction
 // ------------------
 CVTFFile::CVTFFile()
@@ -654,8 +658,8 @@ vlBool CVTFFile::Create(vlUInt uiWidth, vlUInt uiHeight, vlUInt uiFrames, vlUInt
 
 						for (vlUInt m = 1; m < this->Header->MipCount; m++)
 						{
-							vlUShort usWidth  = max(1u, this->Header->Width  >> m);
-							vlUShort usHeight = max(1u, this->Header->Height >> m);
+							vlUShort usWidth  = std::max(1, this->Header->Width  >> m);
+							vlUShort usHeight = std::max(1, this->Header->Height >> m);
 
 							if (!stbir_resize_uint8_generic(
 								pSource, this->Header->Width, this->Header->Height, 0,
@@ -837,22 +841,26 @@ vlBool CVTFFile::IsLoaded() const
 
 vlBool CVTFFile::Load(const vlChar *cFileName, vlBool bHeaderOnly)
 {
-	return this->Load(&IO::Readers::CFileReader(cFileName), bHeaderOnly);
+	IO::Readers::CFileReader reader(cFileName);
+	return this->Load(&reader, bHeaderOnly);
 }
 
 vlBool CVTFFile::Load(const vlVoid *lpData, vlUInt uiBufferSize, vlBool bHeaderOnly)
 {
-	return this->Load(&IO::Readers::CMemoryReader(lpData, uiBufferSize), bHeaderOnly);
+	IO::Readers::CMemoryReader reader(lpData, uiBufferSize);
+	return this->Load(&reader, bHeaderOnly);
 }
 
 vlBool CVTFFile::Load(vlVoid *pUserData, vlBool bHeaderOnly)
 {
-	return this->Load(&IO::Readers::CProcReader(pUserData), bHeaderOnly);
+	IO::Readers::CProcReader reader(pUserData);
+	return this->Load(&reader, bHeaderOnly);
 }
 
 vlBool CVTFFile::Save(const vlChar *cFileName) const
 {
-	return this->Save(&IO::Writers::CFileWriter(cFileName));
+	IO::Writers::CFileWriter writer(cFileName);
+	return this->Save(&writer);
 }
 
 vlBool CVTFFile::Save(vlVoid *lpData, vlUInt uiBufferSize, vlUInt &uiSize) const
@@ -870,7 +878,8 @@ vlBool CVTFFile::Save(vlVoid *lpData, vlUInt uiBufferSize, vlUInt &uiSize) const
 
 vlBool CVTFFile::Save(vlVoid *pUserData) const
 {
-	return this->Save(&IO::Writers::CProcWriter(pUserData));
+	IO::Writers::CProcWriter writer(pUserData);
+	return this->Save(&writer);
 }
 
 // -----------------------------------------------------------------------------------
@@ -926,7 +935,7 @@ vlBool CVTFFile::Load(IO::Readers::IReader *Reader, vlBool bHeaderOnly)
 			throw 0;
 		}
 
-		Reader->Seek(0, FILE_BEGIN);
+		Reader->Seek(0, SEEK_SET);
 
 		this->Header = new SVTFHeader;
 		memset(this->Header, 0, sizeof(SVTFHeader));
@@ -1013,7 +1022,7 @@ vlBool CVTFFile::Load(IO::Readers::IReader *Reader, vlBool bHeaderOnly)
 						}
 
 						vlUInt uiSize = 0;
-						Reader->Seek(this->Header->Resources[i].Data, FILE_BEGIN);
+						Reader->Seek(this->Header->Resources[i].Data, SEEK_SET);
 						if(Reader->Read(&uiSize, sizeof(vlUInt)) != sizeof(vlUInt))
 						{
 							throw 0;
@@ -1061,7 +1070,7 @@ vlBool CVTFFile::Load(IO::Readers::IReader *Reader, vlBool bHeaderOnly)
 			this->lpThumbnailImageData = new vlByte[this->uiThumbnailBufferSize];
 
 			// load the low res data
-			Reader->Seek(uiThumbnailBufferOffset, FILE_BEGIN);
+			Reader->Seek(uiThumbnailBufferOffset, SEEK_SET);
 			if(Reader->Read(this->lpThumbnailImageData, this->uiThumbnailBufferSize) != this->uiThumbnailBufferSize)
 			{
 				throw 0;
@@ -1078,7 +1087,7 @@ vlBool CVTFFile::Load(IO::Readers::IReader *Reader, vlBool bHeaderOnly)
 			this->lpImageData = new vlByte[this->uiImageBufferSize];
 
 			// load the high-res data
-			Reader->Seek(uiImageDataOffset, FILE_BEGIN);
+			Reader->Seek(uiImageDataOffset, SEEK_SET);
 			if(Reader->Read(this->lpImageData, this->uiImageBufferSize) != this->uiImageBufferSize)
 			{
 				throw 0;
@@ -3031,7 +3040,7 @@ vlUInt16 FP16ToUnorm(vlUInt16 uiValue)
 	sValue *= sFP16HDRExposure;
 	sValue = Reinhard(sValue);
 	sValue *= 65535.0f;
-	sValue = min(max(sValue, 0.0f), 65535.0f);
+	sValue = std::min(std::max(sValue, 0.0f), 65535.0f);
 	return (vlUInt16) sValue;
 }
 

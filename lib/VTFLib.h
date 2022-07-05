@@ -13,9 +13,19 @@
 #define VTFLIB_H
 
 #ifdef VTFLIB_EXPORTS
-#define VTFLIB_API __declspec(dllexport)
+#	if defined(_MSC_VER) && !defined(VTFLIB_STATIC)
+#		define VTFLIB_API __declspec(dllexport)
+#	elif defined(__clang__) || defined(__GNUC__)
+#		define VTFLIB_API	__attribute__((visibility("default")))
+#	else
+#		define VTFLIB_API
+#	endif
 #else
-#define VTFLIB_API __declspec(dllimport)
+#	if defined(_WIN32) && !defined(VTFLIB_STATIC)
+#		define VTFLIB_API __declspec(dllimport)
+#	else
+#		define VTFLIB_API
+#	endif
 #endif
 
 typedef unsigned char	vlBool;

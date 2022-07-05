@@ -9,6 +9,10 @@
  * version.
  */
 
+#ifdef __unix__
+#	include <errno.h>
+#endif
+
 #include "Error.h"
 
 using namespace VTFLib::Diagnostics;
@@ -51,6 +55,7 @@ vlVoid CError::Set(const vlChar *cErrorMessage, vlBool bSystemError)
 	vlChar cBuffer[2048];
 	if(bSystemError)
 	{
+#ifdef _WIN32
 		LPSTR lpMessage = NULL;
 		vlUInt uiLastError = GetLastError(); 
 
@@ -64,7 +69,10 @@ vlVoid CError::Set(const vlChar *cErrorMessage, vlBool bSystemError)
 		{
 			sprintf(cBuffer, "Error:\n%s\n\nSystem Error: 0x%.8x.", cErrorMessage, uiLastError); 
 		}
-
+#elif defined(__unix__)
+		int err = errno;
+		sprintf(cBuffer, "Error:\n%s\n\nSystem Error: 0x%.8x:\n%s", cErrorMessage, err, strerror(err));
+#endif
 		
 	}
 	else

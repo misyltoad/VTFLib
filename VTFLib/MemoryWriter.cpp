@@ -86,13 +86,13 @@ vlUInt CMemoryWriter::Seek(vlLong lOffset, vlUInt uiMode)
 
 	switch(uiMode)
 	{
-		case FILE_BEGIN:
+		case SEEK_SET:
 			this->uiPointer = 0;
 			break;
-		case FILE_CURRENT:
+		case SEEK_CUR:
 
 			break;
-		case FILE_END:
+		case SEEK_END:
 			this->uiPointer = this->uiLength;
 			break;
 	}

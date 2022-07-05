@@ -21,10 +21,22 @@
 #define STDAFX_H
 
 #ifdef VTFLIB_EXPORTS
-#	define VTFLIB_API __declspec(dllexport)
+#	if defined(_MSC_VER) && !defined(VTFLIB_STATIC)
+#		define VTFLIB_API __declspec(dllexport)
+#	elif defined(__clang__) || defined(__GNUC__)
+#		define VTFLIB_API	__attribute__((visibility("default")))
+#	else
+#		define VTFLIB_API
+#	endif
 #else
-#	define VTFLIB_API __declspec(dllimport)
+#	if defined(_WIN32) && !defined(VTFLIB_STATIC)
+#		define VTFLIB_API __declspec(dllimport)
+#	else
+#		define VTFLIB_API
+#	endif
 #endif
+
+#include <cstdint>
 
 // Custom data types
 typedef unsigned char	vlBool;				//!< Boolean value 0/1.
@@ -40,10 +52,10 @@ typedef float			vlSingle;			//!< Floating point number
 typedef double			vlDouble;			//!< Double number
 typedef void			vlVoid;				//!< Void value.
 
-typedef unsigned __int8		vlUInt8;
-typedef unsigned __int16	vlUInt16;
-typedef unsigned __int32	vlUInt32;
-typedef unsigned __int64	vlUInt64;
+typedef std::uint8_t	vlUInt8;
+typedef std::uint16_t	vlUInt16;
+typedef std::uint32_t	vlUInt32;
+typedef std::uint64_t	vlUInt64;
 
 typedef vlSingle		vlFloat;			//!< Floating point number (same as vlSingled).
 
@@ -55,13 +67,24 @@ typedef vlSingle		vlFloat;			//!< Floating point number (same as vlSingled).
 #	define _CRT_NONSTDC_NO_DEPRECATE
 #endif
 
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
+#ifdef _WIN32
+#	define WIN32_LEAN_AND_MEAN
+#	include <windows.h>
+#endif
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
 #include <math.h>
 #include <stdarg.h>
+#include <string.h>
+#include <memory.h>
+#include <ctype.h>
+#include <cstring>
+
+#ifdef __unix__
+#	define stricmp strcasecmp
+#	define _stricmp strcasecmp
+#endif
 
 #if _MSC_VER >= 1600 // Visual Studio 2010
 #	define STATIC_ASSERT(condition, message) static_assert(condition, message)

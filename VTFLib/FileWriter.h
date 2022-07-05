@@ -24,7 +24,7 @@ namespace VTFLib
 			class CFileWriter : public IWriter
 			{
 			private:
-				HANDLE hFile;
+				FILE* hFile;
 				vlChar *cFileName;
 
 			public:
@@ -38,7 +38,6 @@ namespace VTFLib
 				virtual vlVoid Close();
 
 				virtual vlUInt GetStreamSize() const;
-				virtual vlUInt GetStreamPointer() const;
 
 				virtual vlUInt Seek(vlLong lOffset, vlUInt uiMode);
 
