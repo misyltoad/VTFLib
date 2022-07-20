@@ -848,8 +848,8 @@ namespace VTFLib
 		vlVoid *SetResourceData(vlUInt uiType, vlUInt uiSize, vlVoid *lpData);
 
 	public:
-		vlBool GenerateMipmaps(VTFMipmapFilter MipmapFilter = MIPMAP_FILTER_BOX);
-		vlBool GenerateMipmaps(vlUInt uiFace, vlUInt uiFrame, VTFMipmapFilter MipmapFilter = MIPMAP_FILTER_BOX);
+		vlBool GenerateMipmaps(VTFMipmapFilter MipmapFilter, vlBool bSRGB);
+		vlBool GenerateMipmaps(vlUInt uiFace, vlUInt uiFrame, VTFMipmapFilter MipmapFilter, vlBool bSRGB);
 
 		vlBool GenerateThumbnail(vlBool bSRGB);
 

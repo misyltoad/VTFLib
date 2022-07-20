@@ -1983,140 +1983,96 @@ vlBool CVTFFile::GenerateMipmaps(vlUInt uiFace, vlUInt uiFrame, VTFMipmapFilter 
 	if(!this->IsLoaded())
 		return vlFalse;
 
-#ifdef USE_NVDXT
-	if(this->lpImageData == 0)
+	auto formatInfo = GetImageFormatInfo(GetFormat());
+	VTFImageFormat actualFormat = GetFormat();
+	vlByte* lpData = (vlByte*)GetData(uiFrame, uiFace, 0, 0);
+	bool bConverted = false;
+
+	// If the image is compressed or one of the other unsupported stbir types, we'll convert it to RGBA8888 for processing
+	if (formatInfo.bIsCompressed || formatInfo.uiAlphaBitsPerPixel < 8 || formatInfo.uiBlueBitsPerPixel < 8 ||
+		formatInfo.uiGreenBitsPerPixel < 8 || formatInfo.uiRedBitsPerPixel < 8)
 	{
-		LastError.Set("No image data to generate mipmaps from.");
-		return vlFalse;
+		bConverted = true;
+		lpData = new vlByte[GetWidth() * GetHeight() * 4];
+		if (!ConvertToRGBA8888(GetData(uiFrame, uiFace, 0, 0), lpData, GetWidth(), GetHeight(), GetFormat()))
+			return false;
+
+		actualFormat = IMAGE_FORMAT_RGBA8888;
+		formatInfo = GetImageFormatInfo(actualFormat);
 	}
 
-	if(this->Header->Depth > 1)
+	auto uiWidth = GetWidth();
+	auto uiHeight = GetHeight();
+	auto uiMipWidth = uiWidth >> 1;
+	auto uiMipHeight = uiHeight >> 1;
+
+	// Alloc a working buffer that will fit all of our mips
+	vlByte* lpWorkBuffer = new vlByte[uiMipWidth * uiMipHeight * formatInfo.uiBytesPerPixel];
+
+	// Determine datatype + channel count
+	stbir_datatype iDataType = STBIR_TYPE_UINT8;
+	if (actualFormat == IMAGE_FORMAT_RGB323232F || actualFormat == IMAGE_FORMAT_RGBA32323232F)
+		iDataType = STBIR_TYPE_FLOAT;
+	else if (actualFormat == IMAGE_FORMAT_RGBA16161616 || actualFormat == IMAGE_FORMAT_RGBA16161616 || 
+			actualFormat == IMAGE_FORMAT_RGBA16161616F)
+		iDataType = STBIR_TYPE_UINT16;
+
+	int iNumChannels = 0;
+	if (formatInfo.uiAlphaBitsPerPixel > 0) iNumChannels++;
+	if (formatInfo.uiGreenBitsPerPixel > 0) iNumChannels++;
+	if (formatInfo.uiBlueBitsPerPixel > 0) iNumChannels++;
+	if (formatInfo.uiRedBitsPerPixel > 0) iNumChannels++;
+
+	// Determine mip filter
+	stbir_filter iMipFilter;
+	switch(MipmapFilter)
 	{
-		LastError.Set("Mipmap generation for depth textures is not supported.");
-		return vlFalse;
-	}
-
-	assert(MipmapFilter >= 0 && MipmapFilter < MIPMAP_FILTER_COUNT);
-
-	if(this->Header->MipCount == 1)
-	{
-		return vlTrue;
-	}
-
-	// The mipmap callback NVMipmapCallback() will call ConvertFromRGBA8888() which will use the
-	// NVDXT lib to compress the image data if it is in a DXT format.  This is bad!!!  The
-	// nvDXTcompressRGBA() function only seems to be able to handle one call at a time and since
-	// we made a call for the mipmap generation the thing will crash.  Hence all this DXT nonsense.
-	// This took me a LONG time to figure out!  Go NVidia docs...
-	// Sidenote: this could very well cause problems in multithreaded applications!
-
-	// Get the format to generate mipmaps to.
-	VTFImageFormat MipmapImageFormat;
-	switch(this->Header->ImageFormat)
-	{
-	case IMAGE_FORMAT_DXT1:
-	case IMAGE_FORMAT_DXT1_ONEBITALPHA:
-	case IMAGE_FORMAT_DXT3:
-	case IMAGE_FORMAT_DXT5:
-		MipmapImageFormat = this->Header->ImageFormat;
-		break;
+	case MIPMAP_FILTER_BOX:
+		iMipFilter = STBIR_FILTER_BOX; break;
+	case MIPMAP_FILTER_TRIANGLE:
+		iMipFilter = STBIR_FILTER_TRIANGLE; break;
+	case MIPMAP_FILTER_CUBIC:
+		iMipFilter = STBIR_FILTER_CUBICBSPLINE; break;
+	case MIPMAP_FILTER_CATROM:
+		iMipFilter = STBIR_FILTER_CATMULLROM; break;
+	case MIPMAP_FILTER_MITCHELL:
+		iMipFilter = STBIR_FILTER_MITCHELL; break;
 	default:
-		MipmapImageFormat = IMAGE_FORMAT_RGBA8888;
-		break;
+		iMipFilter = STBIR_FILTER_DEFAULT; break;
 	}
 
-	nvCompressionOptions Options = nvCompressionOptions();
-
-	SNVCompressionUserData UserData = SNVCompressionUserData(this, uiFace, uiFrame, 0, MipmapImageFormat);
-
-	// Don't generate mipmaps.
-	Options.mipMapGeneration = kGenerateMipMaps;
-
-	Options.mipFilterType = (nvMipFilterTypes)MipmapFilter;
-
-	// Set the format.
-	switch(uiDXTQuality)
+	bool bOk = true;
+	for (vlUInt32 i = 1; i <= GetMipmapCount(); ++i)
 	{
-	case DXT_QUALITY_LOW:
-		Options.quality = kQualityFastest;
-		break;
-	case DXT_QUALITY_MEDIUM:
-		Options.quality = kQualityNormal;
-		break;
-	case DXT_QUALITY_HIGH:
-		Options.quality = kQualityProduction;
-		break;
-	case DXT_QUALITY_HIGHEST:
-		Options.quality = kQualityHighest;
-		break;
-	}
-	switch(MipmapImageFormat)
-	{
-	case IMAGE_FORMAT_DXT1:
-		Options.textureFormat = kDXT1;
-		Options.bForceDXT1FourColors = true;
-		break;
-	case IMAGE_FORMAT_DXT1_ONEBITALPHA:
-		Options.bBinaryAlpha = true;
-		Options.bForceDXT1FourColors = true;
-		Options.textureFormat = kDXT1a;
-		break;
-	case IMAGE_FORMAT_DXT3:
-		Options.textureFormat = kDXT3;
-		break;
-	case IMAGE_FORMAT_DXT5:
-		Options.textureFormat = kDXT5;
-		break;
-	case IMAGE_FORMAT_RGBA8888:
-		Options.textureFormat = k8888;
-		Options.bSwapRB = true;
-		break;
-	}
+		bOk &= stbir_resize(
+			lpData, uiWidth, uiHeight, 0, lpWorkBuffer,
+			uiMipWidth, uiMipHeight, 0, iDataType, iNumChannels,
+			formatInfo.uiAlphaBitsPerPixel > 0, STBIR_FLAG_ALPHA_PREMULTIPLIED, STBIR_EDGE_CLAMP, STBIR_EDGE_CLAMP,
+			iMipFilter, iMipFilter, bSRGB ? STBIR_COLORSPACE_SRGB : STBIR_COLORSPACE_LINEAR, nullptr
+		);
 
-	if(MipmapImageFormat != IMAGE_FORMAT_RGBA8888)
-	{
-		// nvDXTcompressRGBA() fails on widths or heights of 1 or 2 so rescale those images.
-		if(this->Header->Width < 4)
+		if (bConverted)
 		{
-			Options.rescaleImageType = kRescalePreScale;
-			Options.rescaleImageFilter = kMipFilterPoint;
-			Options.scaleX = 4.0f;
+			vlUInt32 uiOffset = ComputeDataOffset(uiFrame, uiFace, 0, i, GetFormat());
+
+			bOk &= Convert(lpWorkBuffer, this->lpImageData + uiOffset, uiMipWidth, uiMipHeight, actualFormat, GetFormat());
+		}
+		else // Data can be set directly
+		{
+			SetData(uiFrame, uiFace, 0, i, lpWorkBuffer);
 		}
 
-		if(this->Header->Height < 4)
-		{
-			Options.rescaleImageType = kRescalePreScale;
-			Options.rescaleImageFilter = kMipFilterPoint;
-			Options.scaleY = 4.0f;
-		}
+		uiMipWidth >>= 1;
+		uiMipHeight >>= 1;
 	}
 
-	// The UserData struct gets passed to our callback.
-	Options.user_data = &UserData;
-
-	vlByte *lpImageData = new vlByte[this->ComputeImageSize(this->Header->Width, this->Header->Height, 1, IMAGE_FORMAT_RGBA8888)];
-	
-	if(!this->ConvertToRGBA8888(this->GetData(uiFace, uiFrame, 0, 0), lpImageData, this->Header->Width, this->Header->Height, this->Header->ImageFormat))
+	delete [] lpWorkBuffer;
+	if (bConverted)
 	{
-		delete []lpImageData;
-
-		return vlFalse;
+		delete [] lpData;
 	}
 
-	if(!nvDXTCompressWrapper(lpImageData, this->Header->Width, this->Header->Height, &Options, NVWriteCallback))
-	{
-		delete []lpImageData;
-
-		return vlFalse;
-	}
-
-	delete []lpImageData;
-
-	return vlTrue;
-#else
-	LastError.Set("NVDXT support required for CVTFFile::GenerateMipmaps().");
-	return vlFalse;
-#endif
+	return bOk;
 }
 
 //
