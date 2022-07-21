@@ -2,7 +2,8 @@ cmake_minimum_required(VERSION 3.10)
 
 project(vtflib C CXX)
 
-option(VTFLIB_STATIC "If enabled, builds VTFLIB as a static library rather than shared" ON)
+option(VTFLIB_STATIC "If enabled, builds VTFLIB as a static library" ON)
+option(VTFLIB_SHARED "If enabled, builds VTFLIB as a shared library" ON)
 
 include_directories(thirdparty/include)
 
@@ -42,24 +43,41 @@ set(VTFLIB_SRCS
 	VTFLib/VTFWrapper.cpp)
 
 if (VTFLIB_STATIC)
-	add_library(vtflib STATIC ${VTFLIB_SRCS})
-	target_compile_definitions(vtflib PUBLIC VTFLIB_STATIC)
-else()
+	add_library(vtflib_static STATIC ${VTFLIB_SRCS})
+	target_compile_definitions(vtflib_static PUBLIC VTFLIB_STATIC)
+endif()
+if (VTFLIB_SHARED)
 	add_library(vtflib SHARED ${VTFLIB_SRCS})
 endif()
 
-# Link against compressonator libs
+# Link against compressonator libs & set runtime lib
 if (UNIX)
-	target_link_directories(vtflib PUBLIC thirdparty/lib/x64)
-	target_link_libraries(vtflib PUBLIC CMP_Compressonator pthread)
+	if (VTFLIB_SHARED)
+		target_link_directories(vtflib PUBLIC thirdparty/lib/x64)
+		target_link_libraries(vtflib PUBLIC CMP_Compressonator pthread)
+	endif()
+	if (VTFLIB_STATIC)
+		target_link_directories(vtflib_static PUBLIC thirdparty/lib/x64)
+		target_link_libraries(vtflib_static PUBLIC CMP_Compressonator pthread)
+	endif()
 else()
-	target_link_directories(vtflib PUBLIC thirdparty/lib)
-	# Make sure to link against the correct variant
-	target_link_libraries(vtflib PUBLIC "Compressonator_MT$<$<CONFIG:Debug>:d>")
+	if (VTFLIB_SHARED)
+		target_link_directories(vtflib PUBLIC thirdparty/lib)
+		target_link_libraries(vtflib PUBLIC "Compressonator_MT$<$<CONFIG:Debug>:d>")
+	endif()
+	if (VTFLIB_STATIC)
+		target_link_libraries(vtflib_static PUBLIC "Compressonator_MT$<$<CONFIG:Debug>:d>")
+		target_link_directories(vtflib_static PUBLIC thirdparty/lib)
+	endif()
 endif()
 
-target_compile_definitions(vtflib PRIVATE VTFLIB_EXPORTS)
-
-target_precompile_headers(vtflib PRIVATE VTFLib/stdafx.h)
-target_include_directories(vtflib PUBLIC lib)
-
+if (VTFLIB_SHARED)
+	target_compile_definitions(vtflib PRIVATE VTFLIB_EXPORTS)
+	target_precompile_headers(vtflib PRIVATE VTFLib/stdafx.h)
+	target_include_directories(vtflib PUBLIC lib)
+endif()
+if (VTFLIB_STATIC)
+	target_compile_definitions(vtflib_static PRIVATE VTFLIB_EXPORTS)
+	target_precompile_headers(vtflib_static PRIVATE VTFLib/stdafx.h)
+	target_include_directories(vtflib_static PUBLIC lib)
+endif()
