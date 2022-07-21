@@ -1,0 +1,45 @@
+name: Build
+
+on:
+  push:
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: submodules-init
+      uses: snickerbockers/submodules-init@v4
+
+    - name: Generate
+      working-directory: ${{github.workspace}}
+      run: cmake . -DVTFLIB_STATIC=ON -DVTFLIB_SHARED=ON -B ./build
+    
+    - name: Build
+      working-directory: ${{github.workspace}}
+      run: cmake --build ./build
+
+  build-windows:
+    runs-on: windows-latest
+    strategy:
+          matrix:
+            build_config: ["Release"]
+    steps: 
+    - uses: actions/checkout@v2
+
+    - name: submodules-init
+      uses: snickerbockers/submodules-init@v4
+
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v1
+
+    - name: Generate Solution
+      working-directory: ${{github.workspace}}
+      run: cmake . -G "Visual Studio 17 2022" -B build
+
+    - name: Build
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      run: msbuild /m /p:Configuration=${{matrix.build_config}} build\vtflib.sln
+
