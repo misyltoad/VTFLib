@@ -98,7 +98,7 @@ vlBool CFileReader::Read(vlChar &cChar)
 
 	if(numRead != 1)
 	{
-		LastError.Set("ReadFile() failed.", vlTrue);
+		LastError.Set("fread() failed.", vlTrue);
 	}
 
 	return numRead == 1;
@@ -115,8 +115,8 @@ vlUInt CFileReader::Read(vlVoid *vData, vlUInt uiBytes)
 
 	if(numRead != 1)
 	{
-		LastError.Set("ReadFile() failed.", vlTrue);
+		LastError.Set("fread() failed.", vlTrue);
 	}
 
-	return numRead;
+	return numRead * uiBytes;
 }
