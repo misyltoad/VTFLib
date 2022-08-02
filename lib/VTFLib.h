@@ -825,7 +825,8 @@ namespace VTFLib
 		
 		vlByte *GetData(vlUInt uiFrame, vlUInt uiFace, vlUInt uiSlice, vlUInt uiMipmapLevel) const;
 		vlVoid SetData(vlUInt uiFrame, vlUInt uiFace, vlUInt uiSlice, vlUInt uiMipmapLevel, vlByte *lpData);
-
+		
+		vlBool ConvertInPlace(VTFImageFormat format);
 	public:
 		vlBool GetHasThumbnail() const;
 

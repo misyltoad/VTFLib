@@ -282,6 +282,9 @@ namespace VTFLib
 			\return true on sucessful save, otherwise false.
 		*/
 		vlBool Save(vlVoid *pUserData) const;
+		
+		//! Convert the internal storage of the VTF to the specified format
+		vlBool ConvertInPlace(VTFImageFormat format);
 
 	private:
 		vlBool IsPowerOfTwo(vlUInt uiSize);

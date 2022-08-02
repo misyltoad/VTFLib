@@ -1017,7 +1017,7 @@ vlBool CVTFFile::Load(IO::Readers::IReader *Reader, vlBool bHeaderOnly)
 					{
 						if(this->Header->Resources[i].Data + sizeof(vlUInt) > uiFileSize)
 						{
-							LastError.Set("File may be corrupt; file to small for it's resource data.");
+							LastError.Set("File may be corrupt; file too small for its resource data.");
 							throw 0;
 						}
 
@@ -1030,7 +1030,7 @@ vlBool CVTFFile::Load(IO::Readers::IReader *Reader, vlBool bHeaderOnly)
 
 						if(this->Header->Resources[i].Data + sizeof(vlUInt) + uiSize > uiFileSize)
 						{
-							LastError.Set("File may be corrupt; file to small for it's resource data.");
+							LastError.Set("File may be corrupt; file too small for its resource data.");
 							throw 0;
 						}
 
@@ -1055,7 +1055,7 @@ vlBool CVTFFile::Load(IO::Readers::IReader *Reader, vlBool bHeaderOnly)
 		// headersize + lowbuffersize + buffersize *should* equal the filesize
 		if(this->Header->HeaderSize > uiFileSize || uiThumbnailBufferOffset + this->uiThumbnailBufferSize > uiFileSize || uiImageDataOffset + this->uiImageBufferSize > uiFileSize)
 		{
-			LastError.Set("File may be corrupt; file to small for it's image data.");
+			LastError.Set("File may be corrupt; file too small for its image data.");
 			throw 0;
 		}
 
@@ -3624,4 +3624,56 @@ vlVoid CVTFFile::MirrorImage(vlByte *lpImageDataRGBA8888, vlUInt uiWidth, vlUInt
 			*pTwo = uiTemp;
 		}
 	}
+}
+
+//
+// ConvertInPlace
+// Convert the image to format in place
+//
+vlBool CVTFFile::ConvertInPlace(VTFImageFormat format)
+{
+	// Compute and allocate a working buffer- will replace lpImageData at the end
+	const size_t usBufferSize = ComputeImageSize(GetWidth(), GetHeight(), GetDepth(), GetMipmapCount(), format);
+	auto* buffer = new vlByte[usBufferSize];
+	
+	const vlUInt uiSrcWidth = GetWidth();
+	const vlUInt uiSrcHeight = GetHeight();
+	const vlUInt uiSrcDepth = GetDepth();
+	const vlUInt uiMipCount = GetMipmapCount();
+	const vlUInt uiFrameCount = GetFrameCount();
+	const vlUInt uiFaceCount = GetFaceCount();
+	const vlUInt uiSliceCount = GetDepth();
+	// Holy sweet mother of nested loops...
+	for(vlUInt uiFrame = 0; uiFrame < uiFrameCount; ++uiFrame)
+	{
+		for(vlUInt uiFace = 0; uiFace < uiFaceCount; ++uiFace)
+		{
+			for(vlUInt uiSlice = 0; uiSlice < uiSliceCount; ++uiSlice)
+			{
+				for(vlUInt uiMip = 0; uiMip < uiMipCount; ++uiMip)
+				{
+					auto* lpSrcData = GetData(uiFrame, uiFace, uiSlice, uiMip);
+					auto* lpDstData = (vlByte*)buffer + ComputeDataOffset(uiFrame, uiFace, uiSlice, uiMip, format);
+					
+					vlUInt uiMipWidth, uiMipHeight, uiMipDepth;
+					ComputeMipmapDimensions(uiSrcWidth, uiSrcHeight, uiSrcDepth, uiMip, uiMipWidth, uiMipHeight, uiMipDepth);
+					if (!Convert(lpSrcData, lpDstData, uiMipWidth, uiMipHeight, GetFormat(), format))
+					{
+						delete [] buffer;
+						return false;
+					}
+				}
+			}
+		}
+	}
+	
+	// Recompute image buffer size
+	this->uiImageBufferSize = this->ComputeImageSize(this->Header->Width, this->Header->Height, uiMipCount, this->Header->ImageFormat) * uiFrameCount * uiFaceCount;
+	
+	auto* oldData = this->lpImageData;
+	this->lpImageData = buffer;
+	this->Header->ImageFormat = format;
+	
+	delete [] oldData;
+	return true;
 }
