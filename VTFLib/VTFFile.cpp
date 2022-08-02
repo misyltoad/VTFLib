@@ -1023,7 +1023,7 @@ vlBool CVTFFile::Load(IO::Readers::IReader *Reader, vlBool bHeaderOnly)
 					}
 
 					vlUInt uiSize = 0;
-					Reader->Seek(this->Header->Resources[i].Data, FILE_BEGIN);
+					Reader->Seek(this->Header->Resources[i].Data, SEEK_SET);
 					if (Reader->Read(&uiSize, sizeof(vlUInt)) != sizeof(vlUInt)) 
 					{
 						LastError.Set("File may be corrupt; file too small for its resource data.");
@@ -4012,11 +4012,7 @@ vlVoid CVTFFile::MirrorImage(vlByte *lpImageDataRGBA8888, vlUInt uiWidth, vlUInt
 // Convert the image to format in place
 //
 vlBool CVTFFile::ConvertInPlace(VTFImageFormat format)
-{
-	// Compute and allocate a working buffer- will replace lpImageData at the end
-	const size_t usBufferSize = ComputeImageSize(GetWidth(), GetHeight(), GetDepth(), GetMipmapCount(), format);
-	auto* buffer = new vlByte[usBufferSize];
-	
+{	
 	const vlUInt uiSrcWidth = GetWidth();
 	const vlUInt uiSrcHeight = GetHeight();
 	const vlUInt uiSrcDepth = GetDepth();
@@ -4024,6 +4020,11 @@ vlBool CVTFFile::ConvertInPlace(VTFImageFormat format)
 	const vlUInt uiFrameCount = GetFrameCount();
 	const vlUInt uiFaceCount = GetFaceCount();
 	const vlUInt uiSliceCount = GetDepth();
+
+	// Compute and allocate a working buffer- will replace lpImageData at the end
+	const vlUInt usBufferSize = this->ComputeImageSize(this->Header->Width, this->Header->Height, uiMipCount, this->Header->ImageFormat) * uiFrameCount * uiFaceCount;
+	auto* buffer = new vlByte[usBufferSize];
+
 	// Holy sweet mother of nested loops...
 	for(vlUInt uiFrame = 0; uiFrame < uiFrameCount; ++uiFrame)
 	{
@@ -4049,7 +4050,7 @@ vlBool CVTFFile::ConvertInPlace(VTFImageFormat format)
 	}
 	
 	// Recompute image buffer size
-	this->uiImageBufferSize = this->ComputeImageSize(this->Header->Width, this->Header->Height, uiMipCount, this->Header->ImageFormat) * uiFrameCount * uiFaceCount;
+	this->uiImageBufferSize = usBufferSize;
 	
 	auto* oldData = this->lpImageData;
 	this->lpImageData = buffer;

@@ -15,6 +15,7 @@ endif()
 
 # MT/MTd specification for Windows
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 #
 # VTFLIB
@@ -78,12 +79,12 @@ endif()
 if (VTFLIB_SHARED)
 	target_compile_definitions(vtflib PRIVATE VTFLIB_EXPORTS)
 	target_precompile_headers(vtflib PRIVATE VTFLib/stdafx.h)
-	target_include_directories(vtflib PUBLIC lib)
+	target_include_directories(vtflib PUBLIC lib thirdparty/zlib)
 	target_link_libraries(vtflib PRIVATE zlibstatic)
 endif()
 if (VTFLIB_STATIC)
 	target_compile_definitions(vtflib_static PRIVATE VTFLIB_EXPORTS)
 	target_precompile_headers(vtflib_static PRIVATE VTFLib/stdafx.h)
-	target_include_directories(vtflib_static PUBLIC lib)
+	target_include_directories(vtflib_static PUBLIC lib thirdparty/zlib)
 	target_link_libraries(vtflib_static PRIVATE zlibstatic)
 endif()
