@@ -57,6 +57,11 @@ typedef std::uint16_t	vlUInt16;
 typedef std::uint32_t	vlUInt32;
 typedef std::uint64_t	vlUInt64;
 
+typedef std::int8_t		vlInt8;
+typedef std::int16_t	vlInt16;
+typedef std::int32_t	vlInt32;
+typedef std::int64_t	vlInt64;
+
 typedef vlSingle		vlFloat;			//!< Floating point number (same as vlSingled).
 
 #define vlFalse			0

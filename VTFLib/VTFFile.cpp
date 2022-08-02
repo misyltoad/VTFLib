@@ -16,6 +16,7 @@
 #include "VTFMathlib.h"
 
 #include "Compressonator.h"
+#include "zlib.h"
 
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
 #include "stb_image_resize.h"
@@ -978,7 +979,9 @@ vlBool CVTFFile::Load(IO::Readers::IReader *Reader, vlBool bHeaderOnly)
 		}
 
 		// read the resource directory if version > 7.3
-		vlUInt uiThumbnailBufferOffset = 0, uiImageDataOffset = 0;
+		vlUInt uiThumbnailBufferOffset = 0, uiImageDataOffset = 0, uiRealImageSize = this->uiImageBufferSize;
+		vlBool bHasAuxCompression = false;
+		vlByte* lpCompressionInfo = 0;
 		if(this->Header->ResourceCount)
 		{
 			if(this->Header->ResourceCount > VTF_RSRC_MAX_DICTIONARY_ENTRIES)
@@ -1012,6 +1015,61 @@ vlBool CVTFFile::Load(IO::Readers::IReader *Reader, vlBool bHeaderOnly)
 					}
 					uiImageDataOffset = this->Header->Resources[i].Data;
 					break;
+				case VTF_RSRC_AUX_COMPRESSION_INFO: // If no data chunk, compression = 0 and so we don't need to deal with this case specially.
+				{
+					if (this->Header->Resources[i].Data + sizeof(vlUInt) > uiFileSize)
+					{
+						LastError.Set("File may be corrupt; file too small for its resource data.");
+					}
+
+					vlUInt uiSize = 0;
+					Reader->Seek(this->Header->Resources[i].Data, FILE_BEGIN);
+					if (Reader->Read(&uiSize, sizeof(vlUInt)) != sizeof(vlUInt)) 
+					{
+						LastError.Set("File may be corrupt; file too small for its resource data.");
+						throw 0;
+					}
+
+					if (this->Header->Resources[i].Data + sizeof(vlUInt) + uiSize > uiFileSize)
+					{
+						LastError.Set("File may be corrupt; file too small for its resource data.");
+						throw 0;
+					}
+
+					this->Header->Data[i].Size = uiSize;
+					lpCompressionInfo = this->Header->Data[i].Data = new vlByte[uiSize];
+					if (Reader->Read(lpCompressionInfo, uiSize) != uiSize)
+					{
+						throw 0;
+					}
+
+					if (uiSize > sizeof(SVTFAuxCompressionInfoHeader)) 
+					{
+						vlUInt32 CompressionLevel = ((SVTFAuxCompressionInfoHeader*)lpCompressionInfo)->CompressionLevel;
+						bHasAuxCompression = CompressionLevel != 0;
+					}
+
+					if (!bHasAuxCompression)
+						break;
+
+					uiRealImageSize = 0;
+
+					for (vlInt iMip = this->Header->MipCount - 1; iMip >= 0; --iMip)
+					{
+						for (vlUInt uiFrame = 0; uiFrame < this->Header->Frames; ++uiFrame)
+						{
+							for (vlUInt uiFace = 0; uiFace < GetFaceCount(); ++uiFace)
+							{
+								vlUInt infoOffset = GetAuxInfoOffset(uiFrame, uiFace, iMip);
+
+								SVTFAuxCompressionInfoEntry* infoEntry = (SVTFAuxCompressionInfoEntry*)(lpCompressionInfo + infoOffset);
+
+								uiRealImageSize += infoEntry->CompressedSize;
+							}
+						}
+					}
+					break;
+				}
 				default:
 					if((this->Header->Resources[i].Flags & RSRCF_HAS_NO_DATA_CHUNK) == 0)
 					{
@@ -1053,7 +1111,7 @@ vlBool CVTFFile::Load(IO::Readers::IReader *Reader, vlBool bHeaderOnly)
 		
 		// sanity check
 		// headersize + lowbuffersize + buffersize *should* equal the filesize
-		if(this->Header->HeaderSize > uiFileSize || uiThumbnailBufferOffset + this->uiThumbnailBufferSize > uiFileSize || uiImageDataOffset + this->uiImageBufferSize > uiFileSize)
+		if(this->Header->HeaderSize > uiFileSize || uiThumbnailBufferOffset + this->uiThumbnailBufferSize > uiFileSize || uiImageDataOffset + uiRealImageSize > uiFileSize)
 		{
 			LastError.Set("File may be corrupt; file too small for its image data.");
 			throw 0;
@@ -1086,9 +1144,74 @@ vlBool CVTFFile::Load(IO::Readers::IReader *Reader, vlBool bHeaderOnly)
 		{
 			this->lpImageData = new vlByte[this->uiImageBufferSize];
 
-			// load the high-res data
 			Reader->Seek(uiImageDataOffset, SEEK_SET);
-			if(Reader->Read(this->lpImageData, this->uiImageBufferSize) != this->uiImageBufferSize)
+
+			// Load the compressed image
+			if (bHasAuxCompression)
+			{
+				// Prepare decompression stream
+				z_stream zStream = { 0 };
+				if (bHasAuxCompression && (inflateInit(&zStream) != Z_OK))
+				{
+					LastError.Set("Unable to initialise VTF decompression stream!\n");
+					throw 0;
+				}
+
+				vlByte* lpCompressionBuf = new vlByte[uiRealImageSize];
+				if (Reader->Read(lpCompressionBuf, uiRealImageSize) != uiRealImageSize)
+				{
+					LastError.Set("Unable to read compressed VTF!\n");
+					inflateEnd(&zStream);
+					throw 0;
+				}
+
+				vlInt totalRead = 0;
+
+				for (vlInt iMip = this->Header->MipCount - 1; iMip >= 0; --iMip)
+				{
+					vlInt iMipSize = ComputeMipmapSize(this->Header->Width, this->Header->Height, 1, iMip, this->Header->ImageFormat);
+
+					for (vlUInt uiFrame = 0; uiFrame < this->Header->Frames; ++uiFrame)
+					{
+						for (vlUInt uiFace = 0; uiFace < GetFaceCount(); ++uiFace)
+						{
+							vlByte *lpMipBits = GetData(uiFrame, uiFace, 0, iMip);
+
+							vlUInt uiInfoOffset = GetAuxInfoOffset(uiFrame, uiFace, iMip);
+
+							SVTFAuxCompressionInfoEntry* pInfoEntry = (SVTFAuxCompressionInfoEntry*)(lpCompressionInfo + uiInfoOffset);
+
+							// Decompress
+							zStream.next_in = lpCompressionBuf + totalRead;
+							zStream.avail_in = pInfoEntry->CompressedSize;
+							zStream.total_out = 0;
+
+							while (zStream.avail_in)
+							{
+								zStream.next_out = lpMipBits + zStream.total_out;
+								zStream.avail_out = iMipSize - zStream.total_out;
+
+								vlInt zRet = inflate(&zStream, Z_NO_FLUSH);
+								vlBool zFailure = (zRet != Z_OK) && (zRet != Z_STREAM_END);
+								if (zFailure || ((zRet == Z_STREAM_END) && (zStream.total_out != iMipSize)))
+								{
+									LastError.Set("Unable to decompress VTF!\n");
+									inflateEnd(&zStream);
+									throw 0;
+								}
+							}
+
+							inflateReset(&zStream);
+
+							totalRead += pInfoEntry->CompressedSize;
+						}
+					}
+				}
+
+				delete[] lpCompressionBuf;
+				inflateEnd(&zStream);
+			}
+			else if (Reader->Read(this->lpImageData, this->uiImageBufferSize) != this->uiImageBufferSize) // load the high-res data
 			{
 				throw 0;
 			}
@@ -1113,7 +1236,7 @@ vlBool CVTFFile::Load(IO::Readers::IReader *Reader, vlBool bHeaderOnly)
 
 //
 // Save()
-// Saves the curret image.  Basic format checking is done.
+// Saves the current image.  Basic format checking is done.
 //
 vlBool CVTFFile::Save(IO::Writers::IWriter *Writer) const
 {
@@ -1121,6 +1244,13 @@ vlBool CVTFFile::Save(IO::Writers::IWriter *Writer) const
 	{
 		LastError.Set("No image to save.");
 		return vlFalse;
+	}
+
+	// Check for aux compression in case we should use the compressed path
+	vlInt iCompressionLevel = GetAuxCompressionLevel();
+	if (iCompressionLevel != 0)
+	{
+		return SaveCompressed(Writer, iCompressionLevel);
 	}
 
 	// ToDo: Check if the image buffer is ok.
@@ -1139,6 +1269,7 @@ vlBool CVTFFile::Save(IO::Writers::IWriter *Writer) const
 
 		if(this->GetSupportsResources())
 		{
+
 			for(vlUInt i = 0; i < this->Header->ResourceCount; i++)
 			{
 				switch(this->Header->Resources[i].Type)
@@ -1150,11 +1281,13 @@ vlBool CVTFFile::Save(IO::Writers::IWriter *Writer) const
 					}
 					break;
 				case VTF_LEGACY_RSRC_IMAGE:
-					if(Writer->Write(this->lpImageData, this->uiImageBufferSize) != this->uiImageBufferSize)
+				{
+					if (Writer->Write(this->lpImageData, this->uiImageBufferSize) != this->uiImageBufferSize)
 					{
 						throw 0;
 					}
 					break;
+				}
 				default:
 					if((this->Header->Resources[i].Flags & RSRCF_HAS_NO_DATA_CHUNK) == 0)
 					{
@@ -1199,6 +1332,206 @@ vlBool CVTFFile::Save(IO::Writers::IWriter *Writer) const
 		return vlFalse;
 	}
 
+	Writer->Close();
+
+	return vlTrue;
+}
+
+//
+// SaveCompressed()
+// Saves the current image with a certain compression level.  Basic format checking is done.
+//
+vlBool CVTFFile::SaveCompressed(IO::Writers::IWriter* Writer, vlInt iCompressionLevel) const
+{
+	if (!this->IsLoaded() || !this->GetHasImage())
+	{
+		LastError.Set("No image to save.");
+		return vlFalse;
+	}
+
+	if (this->GetMajorVersion() < 7 || (this->GetMajorVersion() == 7 && this->GetMinorVersion() < 6))
+	{
+		LastError.Set("VTF Version <7.6 does not support auxiliary compression.");
+		return vlFalse;
+	}
+
+	if (iCompressionLevel <= 0 && iCompressionLevel != SVTFAuxCompressionInfoHeader::DEFAULT_COMPRESSION)
+	{
+		LastError.Set("Invalid compression level while saving.");
+		return vlFalse;
+	}
+
+	// Initialise new compression info
+	vlULong ulCompressionInfoSize = sizeof(SVTFAuxCompressionInfoHeader)
+		+ (this->Header->MipCount * this->Header->Frames * GetFaceCount())
+		* sizeof(SVTFAuxCompressionInfoEntry);
+
+	vlByte* lpCompressionInfo = new vlByte[ulCompressionInfoSize];
+
+	SVTFAuxCompressionInfoHeader* pInfoHeader = (SVTFAuxCompressionInfoHeader*)lpCompressionInfo;
+	pInfoHeader->CompressionLevel = iCompressionLevel;
+
+	if (iCompressionLevel == SVTFAuxCompressionInfoHeader::DEFAULT_COMPRESSION)
+		iCompressionLevel = Z_DEFAULT_COMPRESSION;
+
+	vlByte* lpCompressedImage = nullptr;
+
+	try
+	{
+		// Pre-emptively compress the image
+		z_stream zStream = { 0 };
+		if (deflateInit(&zStream, iCompressionLevel) != Z_OK)
+		{
+			LastError.Set("Unable to initialise VTF decompression stream!\n");
+			throw 0;
+		}
+
+		// Create upper-bound buffer for deflate
+		vlULong ulMaxDeflateSize = deflateBound(&zStream, this->uiImageBufferSize);
+		lpCompressedImage = new vlByte[ulMaxDeflateSize];
+		memset(lpCompressedImage, 0, ulMaxDeflateSize);
+
+		vlULong ulActualDeflateSize = 0;
+
+		// Actually do the compression
+		for (vlInt iMip = this->Header->MipCount - 1; iMip >= 0; --iMip)
+		{
+			vlInt iMipSize = ComputeMipmapSize(this->Header->Width, this->Header->Height, 1, iMip, this->Header->ImageFormat);
+
+			for (vlUInt uiFrame = 0; uiFrame < this->Header->Frames; ++uiFrame)
+			{
+				for (vlUInt uiFace = 0; uiFace < GetFaceCount(); ++uiFace)
+				{
+					vlByte* lpMipBits = GetData(uiFrame, uiFace, 0, iMip);
+
+					// Compress lpMipBits -> Next free data of lpCompressedImage
+					zStream.next_in = lpMipBits;
+					zStream.avail_in = iMipSize;
+					zStream.total_out = 0;
+
+					while (zStream.avail_in)
+					{
+						vlULong ulTotalWritten = ulActualDeflateSize + zStream.total_out;
+
+						zStream.next_out = lpCompressedImage + ulTotalWritten;
+						zStream.avail_out = ulMaxDeflateSize - ulTotalWritten;
+
+						vlInt zRet = deflate(&zStream, Z_FINISH);
+						if ((zRet != Z_OK) && (zRet != Z_STREAM_END))
+						{
+							LastError.Set("Unable to compress VTF!\n");
+							deflateEnd(&zStream);
+							throw 0;
+						}
+					}
+
+					// Update info and size
+					ulActualDeflateSize += zStream.total_out;
+
+					vlUInt uiInfoOffset = GetAuxInfoOffset(uiFrame, uiFace, iMip);
+					SVTFAuxCompressionInfoEntry* pInfoEntry = (SVTFAuxCompressionInfoEntry*)(lpCompressionInfo + uiInfoOffset);
+
+					pInfoEntry->CompressedSize = zStream.total_out;
+
+					deflateReset(&zStream);
+				}
+			}
+		}
+
+		// We now have a compressed image and filled out aux compression info, so we can continue saving in a slightly modified way.
+		if (!Writer->Open())
+			throw 0;
+
+		// Write the header to reserve space. This will be recalculated later, but we save with dummy data at first.
+		if (Writer->Write(this->Header, this->Header->HeaderSize) != this->Header->HeaderSize)
+		{
+			throw 0;
+		}
+
+		// Header that is modified to represent the compressed file
+		SVTFHeader modHeader = *this->Header;
+
+		vlULong ulFileOffset = this->Header->HeaderSize;
+
+		// Resources are guaranteed for compression-compatible VTF
+		for (vlUInt i = 0; i < this->Header->ResourceCount; i++)
+		{
+			modHeader.Resources[i].Data = ulFileOffset;
+
+			switch (this->Header->Resources[i].Type)
+			{
+			case VTF_LEGACY_RSRC_LOW_RES_IMAGE:
+				if (Writer->Write(this->lpThumbnailImageData, this->uiThumbnailBufferSize) != this->uiThumbnailBufferSize)
+				{
+					throw 0;
+				}
+
+				ulFileOffset += this->uiThumbnailBufferSize;
+				break;
+			case VTF_LEGACY_RSRC_IMAGE:
+			{
+				if (Writer->Write(lpCompressedImage, ulActualDeflateSize) != ulActualDeflateSize)
+				{
+					throw 0;
+				}
+
+				ulFileOffset += ulActualDeflateSize;
+				break;
+			}
+			case VTF_RSRC_AUX_COMPRESSION_INFO:
+			case VTF_RSRC_AUX_COMPRESSION_INFO | RSRCF_HAS_NO_DATA_CHUNK:
+			{
+				vlUInt uiCompressionInfoSize = ulCompressionInfoSize;
+				if (Writer->Write(&uiCompressionInfoSize, sizeof(vlUInt)) != sizeof(vlUInt))
+				{
+					throw 0;
+				}
+
+				if (Writer->Write(lpCompressionInfo, ulCompressionInfoSize) != ulCompressionInfoSize)
+				{
+					throw 0;
+				}
+
+				ulFileOffset += ulCompressionInfoSize;
+				break;
+			}
+			default:
+				if ((this->Header->Resources[i].Flags & RSRCF_HAS_NO_DATA_CHUNK) == 0)
+				{
+					if (Writer->Write(&this->Header->Data[i].Size, sizeof(vlUInt)) != sizeof(vlUInt))
+					{
+						throw 0;
+					}
+
+					if (Writer->Write(this->Header->Data[i].Data, this->Header->Data[i].Size) != this->Header->Data[i].Size)
+					{
+						throw 0;
+					}
+
+					ulFileOffset += sizeof(vlUInt) + this->Header->Data[i].Size;
+				}
+			}
+		}
+
+		// Write modified header.
+		Writer->Seek(0, SEEK_SET);
+
+		if (Writer->Write(&modHeader, this->Header->HeaderSize) != this->Header->HeaderSize)
+		{
+			throw 0;
+		}
+	}
+	catch (...)
+	{
+		delete[] lpCompressionInfo;
+		delete[] lpCompressedImage;
+		Writer->Close();
+
+		return vlFalse;
+	}
+
+	delete[] lpCompressionInfo;
+	delete[] lpCompressedImage;
 	Writer->Close();
 
 	return vlTrue;
@@ -1258,7 +1591,7 @@ vlVoid CVTFFile::ComputeResources()
 
 	// Correct header size.
 	STATIC_ASSERT(VTF_MAJOR_VERSION == 7, "HeaderSize needs calculation for new major version.");
-	STATIC_ASSERT(VTF_MINOR_VERSION == 5, "HeaderSize needs calculation for new minor version.");
+	STATIC_ASSERT(VTF_MINOR_VERSION == 6, "HeaderSize needs calculation for new minor version.");
 	switch(this->Header->Version[0])
 	{
 	case 7:
@@ -1281,6 +1614,9 @@ vlVoid CVTFFile::ComputeResources()
 			break;
 		case 5:
 			this->Header->HeaderSize = sizeof(SVTFHeader_75_A) + this->Header->ResourceCount * sizeof(SVTFResource);
+			break;
+		case 6:
+			this->Header->HeaderSize = sizeof(SVTFHeader_76_A) + this->Header->ResourceCount * sizeof(SVTFResource);
 			break;
 		}
 		break;
@@ -1943,6 +2279,41 @@ vlVoid *CVTFFile::SetResourceData(vlUInt uiType, vlUInt uiSize, vlVoid *lpData)
 	}
 
 	return 0;
+}
+
+//
+// GetAuxCompressionLevel()
+// Gets the auxiliary compression level of the VTF.
+//
+vlInt CVTFFile::GetAuxCompressionLevel() const
+{
+	// Find the compression info and get data out of it
+	vlUInt uiDataSize;
+	SVTFAuxCompressionInfoHeader* pInfoHeader = (SVTFAuxCompressionInfoHeader*)this->GetResourceData(VTF_RSRC_AUX_COMPRESSION_INFO, uiDataSize);
+
+	if (!pInfoHeader)
+		return 0;
+	
+	return pInfoHeader->CompressionLevel;
+}
+
+//
+// SetAuxCompressionLevel()
+// Sets the auxiliary compression level of the VTF. Valid levels are 0-9 and SVTFAuxCompressionInfoHeader::DEFAULT_COMPRESSION
+//
+vlBool CVTFFile::SetAuxCompressionLevel(vlInt iCompressionLevel)
+{
+	if (this->GetMajorVersion() < 7 || (this->GetMajorVersion() == 7 && this->GetMinorVersion() < 6))
+	{
+		LastError.Set("VTF Version <7.6 does not support auxiliary compression.");
+		return vlFalse;
+	}
+
+	SVTFAuxCompressionInfoHeader compressionHeader;
+	compressionHeader.CompressionLevel = iCompressionLevel;
+
+	this->SetResourceData(VTF_RSRC_AUX_COMPRESSION_INFO, sizeof(SVTFAuxCompressionInfoHeader), &compressionHeader);
+	return vlTrue;
 }
 
 //
@@ -2787,6 +3158,16 @@ vlUInt CVTFFile::ComputeDataOffset(vlUInt uiFrame, vlUInt uiFace, vlUInt uiSlice
 	assert(uiOffset < this->uiImageBufferSize);
 	
 	return uiOffset;
+}
+
+vlUInt CVTFFile::GetAuxInfoOffset(vlUInt iFrame, vlUInt iFace, vlUInt iMipLevel) const
+{
+	vlUInt faceCount = GetFaceCount();
+	return sizeof(SVTFAuxCompressionInfoHeader) +
+		(	(this->Header->MipCount - 1 - iMipLevel) * this->Header->Frames * faceCount +
+			iFrame * faceCount +
+			iFace ) *
+		sizeof(SVTFAuxCompressionInfoEntry);
 }
 
 //-----------------------------------------------------------------------------------------------------

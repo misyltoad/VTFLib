@@ -43,7 +43,7 @@ extern "C" {
 // VTF version numbers (current version is 7.5)
 //---------------------------------------------
 #define VTF_MAJOR_VERSION					7		//!< VTF major version number
-#define VTF_MINOR_VERSION					5		//!< VTF minor version number
+#define VTF_MINOR_VERSION					6		//!< VTF minor version number
 #define VTF_MINOR_VERSION_DEFAULT			3
 
 #define VTF_MINOR_VERSION_MIN_SPHERE_MAP	1
@@ -286,6 +286,7 @@ typedef enum tagVTFResourceEntryType
 	VTF_RSRC_TEXTURE_LOD_SETTINGS = MAKE_VTF_RSRC_IDF('L', 'O', 'D', RSRCF_HAS_NO_DATA_CHUNK),
 	VTF_RSRC_TEXTURE_SETTINGS_EX = MAKE_VTF_RSRC_IDF('T', 'S', 'O', RSRCF_HAS_NO_DATA_CHUNK),
 	VTF_RSRC_KEY_VALUE_DATA = MAKE_VTF_RSRC_ID('K', 'V', 'D'),
+	VTF_RSRC_AUX_COMPRESSION_INFO = MAKE_VTF_RSRC_ID('A', 'X', 'C'),
 	VTF_RSRC_MAX_DICTIONARY_ENTRIES = 32
 } VTFResourceEntryType;
 
@@ -301,7 +302,7 @@ struct SVTFFileHeader
 {
 	vlChar			TypeString[4];					//!< "Magic number" identifier- "VTF\0".
 	vlUInt			Version[2];						//!< Version[0].version[1] (currently 7.2)
-	vlUInt			HeaderSize;						//!< Size of the header struct (currently 80 bytes)				
+	vlUInt			HeaderSize;						//!< Size of the header struct (currently 120 bytes)				
 };
 
 //! VTFHeader_70 struct.
@@ -420,6 +421,20 @@ struct SVTFHeader_75 : public SVTFHeader_74
 */
 struct alignas(16) SVTFHeader_75_A : public SVTFHeader_75 {};
 
+//! VTFHeader_76 struct.
+/*!
+
+	The complete header for v7.6 of the VTF file format.
+*/
+struct SVTFHeader_76 : public SVTFHeader_75 {};
+
+//! VTFHeader_76_A struct.
+/*!
+
+	The complete header for v7.6 of the VTF file format aligned to 16 bytes.
+*/
+struct alignas(16) SVTFHeader_76_A : public SVTFHeader_76 {};
+
 struct SVTFResource
 {
 	union
@@ -454,6 +469,18 @@ typedef struct tagSVTFTextureSettingsExResource
 	vlByte Flags2;
 	vlByte Flags3;
 } SVTFTextureSettingsExResource;
+
+typedef struct tagSVTFAuxCompressionInfoHeader
+{
+	static constexpr vlInt32 DEFAULT_COMPRESSION = -1;
+
+	vlInt32 CompressionLevel;	// -1 = default, 0 = no compression, 1-9 = specific compression from lowest to highest
+} SVTFAuxCompressionInfoHeader;
+
+typedef struct tagSVTFAuxCompressionInfoEntry
+{
+	vlUInt32 CompressedSize; // Size of compressed face image data
+} SVTFAuxCompressionInfoEntry;
 
 struct SVTFHeader : public SVTFHeader_74_A
 {

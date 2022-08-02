@@ -296,6 +296,9 @@ namespace VTFLib
 		vlBool Load(IO::Readers::IReader *Reader, vlBool bHeaderOnly);
 		vlBool Save(IO::Writers::IWriter *Writer) const;
 
+		// Saves a VTF with a given compression level
+		vlBool SaveCompressed(IO::Writers::IWriter* Writer, vlInt iCompressionLevel) const;
+
 	public:
 
 		//! Check if image data has been loaded.
@@ -461,6 +464,19 @@ namespace VTFLib
 		vlVoid *SetResourceData(vlUInt uiType, vlUInt uiSize, vlVoid *lpData);
 
 	public:
+		vlInt GetAuxCompressionLevel() const;						//!< Gets the auxiliary compression level of the VTF
+
+		//!< Returns true if the compression level was successfully set
+		/*!
+			Sets the auxiliary compression level of the VTF. Only valid on and above VTF 7.6
+
+			\param iCompressionLevel is the compression level to use.
+			0 compression means no compression, 1-9 are increasing levels of compression and
+			SVTFAuxCompressionInfoHeader::DEFAULT_COMPRESSION lets the algorithm decide.
+		*/
+		vlBool SetAuxCompressionLevel(vlInt iCompressionLevel);
+
+	public:
 
 		//! Generate MIP maps from the main image data.
 		/*!
@@ -616,6 +632,8 @@ namespace VTFLib
 
 		// Calculates where in the VTF image the data begins
 		vlUInt ComputeDataOffset(vlUInt uiFrame, vlUInt uiFace, vlUInt uiSlice, vlUInt uiMipmapLevel, VTFImageFormat ImageFormat) const;
+
+		vlUInt GetAuxInfoOffset(vlUInt iFrame, vlUInt iFace, vlUInt iMipLevel) const;
 
 	public:
 
