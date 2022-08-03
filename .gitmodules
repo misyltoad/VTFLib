@@ -1,3 +1,0 @@
-[submodule "thirdparty/zlib"]
-	path = thirdparty/zlib
-	url = https://github.com/madler/zlib.git

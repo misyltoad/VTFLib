@@ -7,7 +7,7 @@ project(vtflib C CXX)
 option(VTFLIB_STATIC "If enabled, builds VTFLIB as a static library" ON)
 option(VTFLIB_SHARED "If enabled, builds VTFLIB as a shared library" ON)
 
-include_directories(thirdparty/include thirdparty/zlib)
+include_directories(thirdparty/include thirdparty/miniz)
 
 if (UNIX)
 	set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--no-undefined")
@@ -43,7 +43,10 @@ set(VTFLIB_SRCS
 	VTFLib/VTFFile.cpp
 	VTFLib/VTFLib.cpp
 	VTFLib/VTFMathlib.cpp
-	VTFLib/VTFWrapper.cpp)
+	VTFLib/VTFWrapper.cpp
+
+	# Miniz sources
+	thirdparty/miniz/miniz.c)
 
 if (VTFLIB_STATIC)
 	add_library(vtflib_static STATIC ${VTFLIB_SRCS})
@@ -52,8 +55,6 @@ endif()
 if (VTFLIB_SHARED)
 	add_library(vtflib SHARED ${VTFLIB_SRCS})
 endif()
-
-add_subdirectory(thirdparty/zlib)
 
 # Link against compressonator libs & set runtime lib
 if (UNIX)
@@ -78,13 +79,11 @@ endif()
 
 if (VTFLIB_SHARED)
 	target_compile_definitions(vtflib PRIVATE VTFLIB_EXPORTS)
-	target_precompile_headers(vtflib PRIVATE VTFLib/stdafx.h)
-	target_include_directories(vtflib PUBLIC lib thirdparty/zlib)
-	target_link_libraries(vtflib PRIVATE zlibstatic)
+	target_precompile_headers(vtflib PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/VTFLib/stdafx.h>")
+	target_include_directories(vtflib PUBLIC lib)
 endif()
 if (VTFLIB_STATIC)
 	target_compile_definitions(vtflib_static PRIVATE VTFLIB_EXPORTS)
-	target_precompile_headers(vtflib_static PRIVATE VTFLib/stdafx.h)
-	target_include_directories(vtflib_static PUBLIC lib thirdparty/zlib)
-	target_link_libraries(vtflib_static PRIVATE zlibstatic)
+	target_precompile_headers(vtflib_static PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/VTFLib/stdafx.h>")
+	target_include_directories(vtflib_static PUBLIC lib)
 endif()

@@ -16,7 +16,7 @@
 #include "VTFMathlib.h"
 
 #include "Compressonator.h"
-#include "zlib.h"
+#include "miniz.h"
 
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
 #include "stb_image_resize.h"
