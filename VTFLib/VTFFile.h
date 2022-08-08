@@ -312,6 +312,8 @@ namespace VTFLib
 
 		vlUInt GetMajorVersion() const;	 //!< Returns the VTF file major version number.
 		vlUInt GetMinorVersion() const;	 //!< Returns the VTF file minor version number.
+		bool SetVersion(vlUInt major, vlUInt minor);
+		
 		vlUInt GetSize() const;			 //!< Returns the VTF file size in bytes.
 
 		vlUInt GetWidth() const;	//!< Returns the width of the image in pixels from the VTF header.

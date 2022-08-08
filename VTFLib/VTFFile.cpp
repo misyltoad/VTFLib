@@ -1575,6 +1575,19 @@ vlUInt CVTFFile::GetMinorVersion() const
 }
 
 //
+// SetVersion
+// Sets the version of the VTF
+//
+bool CVTFFile::SetVersion(vlUInt major, vlUInt minor)
+{
+	if (major != 7 || minor < 1 || minor > 6)
+		return false;
+	Header->Version[0] = major;
+	Header->Version[1] = minor;
+	return true;
+}
+
+//
 // ComputeResources()
 // Computes header VTF directory resources.
 //
