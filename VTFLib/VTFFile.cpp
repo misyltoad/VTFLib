@@ -1582,8 +1582,20 @@ bool CVTFFile::SetVersion(vlUInt major, vlUInt minor)
 {
 	if (major != 7 || minor < 1 || minor > 6)
 		return false;
+
+	bool didSupportResources = GetSupportsResources();
+	
 	Header->Version[0] = major;
 	Header->Version[1] = minor;
+
+	bool doesSupportResources = GetSupportsResources();
+
+	// Add new resources for compatibility if we didn't previously
+	if (!didSupportResources && doesSupportResources) {
+		this->Header->Resources[this->Header->ResourceCount++].Type = VTF_LEGACY_RSRC_LOW_RES_IMAGE;
+		this->Header->Resources[this->Header->ResourceCount++].Type = VTF_LEGACY_RSRC_IMAGE;
+	}
+
 	return true;
 }
 
