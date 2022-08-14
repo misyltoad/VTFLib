@@ -1976,7 +1976,10 @@ vlByte *CVTFFile::GetData(vlUInt uiFrame, vlUInt uiFace, vlUInt uiSlice, vlUInt 
 	if(!this->IsLoaded())
 		return 0;
 
-	return this->lpImageData + this->ComputeDataOffset(uiFrame, uiFace, uiSlice, uiMipmapLevel, this->Header->ImageFormat);
+	vlUInt uiOffset = this->ComputeDataOffset(uiFrame, uiFace, uiSlice, uiMipmapLevel, this->Header->ImageFormat);
+	assert(uiOffset < this->uiImageBufferSize);
+
+	return this->lpImageData + uiOffset;
 }
 
 //
@@ -1989,7 +1992,10 @@ vlVoid CVTFFile::SetData(vlUInt uiFrame, vlUInt uiFace, vlUInt uiSlice, vlUInt u
 	if(!this->IsLoaded() || this->lpImageData == 0)
 		return;
 
-	memcpy(this->lpImageData + this->ComputeDataOffset(uiFrame, uiFace, uiSlice, uiMipmapLevel, this->Header->ImageFormat), lpData, CVTFFile::ComputeMipmapSize(this->Header->Width, this->Header->Height, 1, uiMipmapLevel, this->Header->ImageFormat));
+	vlUInt uiOffset = this->ComputeDataOffset(uiFrame, uiFace, uiSlice, uiMipmapLevel, this->Header->ImageFormat);
+	assert(uiOffset < this->uiImageBufferSize);
+
+	memcpy(this->lpImageData + uiOffset, lpData, CVTFFile::ComputeMipmapSize(this->Header->Width, this->Header->Height, 1, uiMipmapLevel, this->Header->ImageFormat));
 }
 
 //
@@ -2438,6 +2444,7 @@ vlBool CVTFFile::GenerateMipmaps(vlUInt uiFace, vlUInt uiFrame, VTFMipmapFilter 
 		if (bConverted)
 		{
 			vlUInt32 uiOffset = ComputeDataOffset(uiFrame, uiFace, 0, i, GetFormat());
+			assert(uiOffset < this->uiImageBufferSize);
 
 			bOk &= Convert(lpWorkBuffer, this->lpImageData + uiOffset, uiMipWidth, uiMipHeight, actualFormat, GetFormat());
 		}
@@ -3167,8 +3174,6 @@ vlUInt CVTFFile::ComputeDataOffset(vlUInt uiFrame, vlUInt uiFace, vlUInt uiSlice
 	uiOffset += uiTemp1 * uiFrame * uiFaceCount * uiSliceCount;
 	uiOffset += uiTemp1 * uiFace * uiSliceCount;
 	uiOffset += uiTemp2 * uiSlice;
-
-	assert(uiOffset < this->uiImageBufferSize);
 	
 	return uiOffset;
 }
@@ -4048,7 +4053,11 @@ vlBool CVTFFile::ConvertInPlace(VTFImageFormat format)
 				for(vlUInt uiMip = 0; uiMip < uiMipCount; ++uiMip)
 				{
 					auto* lpSrcData = GetData(uiFrame, uiFace, uiSlice, uiMip);
-					auto* lpDstData = (vlByte*)buffer + ComputeDataOffset(uiFrame, uiFace, uiSlice, uiMip, format);
+
+					const vlUInt uiOffset = ComputeDataOffset(uiFrame, uiFace, uiSlice, uiMip, format);
+					assert(uiOffset < usBufferSize);
+
+					auto* lpDstData = (vlByte*)buffer + uiOffset;
 					
 					vlUInt uiMipWidth, uiMipHeight, uiMipDepth;
 					ComputeMipmapDimensions(uiSrcWidth, uiSrcHeight, uiSrcDepth, uiMip, uiMipWidth, uiMipHeight, uiMipDepth);
