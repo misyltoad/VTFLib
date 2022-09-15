@@ -89,15 +89,13 @@ typedef enum tagVTFImageFormat
 	IMAGE_FORMAT_R32F,						//!<  = Luminance - 32 bpp
 	IMAGE_FORMAT_RGB323232F,				//!<  = Red, Green, Blue - 96 bpp
 	IMAGE_FORMAT_RGBA32323232F,				//!<  = Red, Green, Blue, Alpha - 128 bpp
-	IMAGE_FORMAT_NV_DST16,
-	IMAGE_FORMAT_NV_DST24,					
-	IMAGE_FORMAT_NV_INTZ,
-	IMAGE_FORMAT_NV_RAWZ,
-	IMAGE_FORMAT_ATI_DST16,
-	IMAGE_FORMAT_ATI_DST24,
-	IMAGE_FORMAT_NV_NULL,
-	IMAGE_FORMAT_ATI2N,						
-	IMAGE_FORMAT_ATI1N,
+
+	IMAGE_FORMAT_NV_NULL = 33,				//!<  = 0 bpp
+
+	IMAGE_FORMAT_ATI2N,						//!<  = Red, Green BC5 compressed format - 8 bpp
+	IMAGE_FORMAT_ATI1N,						//!<  = Red BC4 compressed format - 4 bpp
+
+	IMAGE_FORMAT_BC7 = 70,					//!<  = Red, Green, Blue, Alpha BC7 compressed format - 8 bpp
 	/*
 	XBox:
 	IMAGE_FORMAT_X360_DST16,

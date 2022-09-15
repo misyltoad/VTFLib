@@ -697,11 +697,11 @@ namespace VTFLib
 
 	private:
 		
-		// DXTn format decompression function
-		static vlBool DecompressDXTn(vlByte *src, vlByte *dst, vlUInt uiWidth, vlUInt uiHeight, VTFImageFormat SourceFormat);
+		// BCn format decompression function
+		static vlBool DecompressBCn(vlByte *src, vlByte *dst, vlUInt uiWidth, vlUInt uiHeight, VTFImageFormat SourceFormat);
 
-		// DXTn format compression function
-		static vlBool CompressDXTn(vlByte *lpSource, vlByte *lpDest, vlUInt uiWidth, vlUInt uiHeight, VTFImageFormat DestFormat);
+		// BCn format compression function
+		static vlBool CompressBCn(vlByte *lpSource, vlByte *lpDest, vlUInt uiWidth, vlUInt uiHeight, VTFImageFormat DestFormat);
 
 	public:
 
